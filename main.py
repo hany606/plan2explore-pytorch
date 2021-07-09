@@ -14,6 +14,7 @@ from models import bottle, Encoder, ObservationModel, RewardModel, TransitionMod
 from planner import MPCPlanner
 from utils.original_utils import lineplot, write_video, imagine_ahead, lambda_return, compute_intrinsic_reward, FreezeParameters, ActivateParameters
 from tensorboardX import SummaryWriter
+import wandb
 import envs
 
 # Hyperparameters
@@ -91,7 +92,7 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if torch.cuda.is_available() and not args.disable_cuda:
   print("using CUDA")
-  args.device = torch.device('cuda:2,1')
+  args.device = torch.device('cuda')
   torch.cuda.manual_seed(args.seed)
 else:
   print("using CPU")
@@ -102,6 +103,8 @@ metrics = {'steps': [], 'episodes': [], 'train_rewards': [], 'test_episodes': []
 
 summary_name = results_dir + "/{}_{}_log"
 writer = SummaryWriter(summary_name.format(args.env, args.id))
+
+#wandb.init(project='p-skill-discovery', config=args, name='plan2explore_' + args.id)
 
 # Initialise training environment and experience replay memory
 env = Env(args.env, args.symbolic_env, args.seed, args.max_episode_length, args.action_repeat, args.bit_depth)
@@ -417,6 +420,10 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
   losses.append([observation_loss.item(), reward_loss.item(), kl_loss.item(), actor_loss.item(), value_loss.item(),
                   onestep_loss.item(), curious_actor_loss.item(), curious_value_loss.item()])
 
+  # wandb plotting
+  # wandb.log({'Observation Loss': losses[0], 'Reward Loss': losses[1], 'KL Loss': losses[2], 'Actor Loss': losses[3],
+  #       'Value Loss': losses[4], 'Onestep Loss': losses[5], 'Curious Actor Loss': losses[6], 'Curious Value Loss': losses[7]
+  #       })
 
   # Update and plot loss metrics
   losses = tuple(zip(*losses))

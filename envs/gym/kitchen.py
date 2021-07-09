@@ -1,4 +1,3 @@
-from envs.gym.env import GymEnv
 import numpy as np
 from collections import defaultdict
 import d4rl
@@ -40,6 +39,12 @@ class KitchenEnv(GymEnv):
 
     def _set_action_space(self):
         self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(9,), dtype=np.float32)
+
+class RandomStartStateKitchenEnv(KitchenEnv):
+    def reset(self, *args, **kwargs):
+        self.solved_subtasks = defaultdict(lambda: 0)
+        obs = super().reset(*args, **kwargs)
+        return obs
 
 class NoGoalKitchenEnv(KitchenEnv):
     """Splits off goal from obs."""

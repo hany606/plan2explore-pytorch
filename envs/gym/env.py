@@ -54,6 +54,7 @@ class GymEnv(BaseEnvironment):
     def __init__(self):
         self._hp = self._default_hparams()
         self._env = self._make_env(self._hp.name)
+        print ('Making env in envs/gym/env.py')
 
         from mujoco_py.builder import MujocoException
         self._mj_except = MujocoException
