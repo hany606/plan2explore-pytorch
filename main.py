@@ -12,9 +12,9 @@ from env import CONTROL_SUITE_ENVS, Env, GYM_ENVS, EnvBatcher
 from memory import ExperienceReplay
 from models import bottle, Encoder, ObservationModel, RewardModel, TransitionModel, ValueModel, ActorModel, OneStepModel
 from planner import MPCPlanner
-from utils import lineplot, write_video, imagine_ahead, lambda_return, compute_intrinsic_reward, FreezeParameters, ActivateParameters
+from utils.original_utils import lineplot, write_video, imagine_ahead, lambda_return, compute_intrinsic_reward, FreezeParameters, ActivateParameters
 from tensorboardX import SummaryWriter
-
+import envs
 
 # Hyperparameters
 parser = argparse.ArgumentParser(description='PlaNet, Dreamer or plan2explore')
@@ -37,7 +37,7 @@ parser.add_argument('--action-noise', type=float, default=0.3, metavar='ε', hel
 parser.add_argument('--episodes', type=int, default=3000, metavar='E', help='Total number of episodes')
 parser.add_argument('--seed-episodes', type=int, default=5, metavar='S', help='Seed episodes')
 parser.add_argument('--collect-interval', type=int, default=100, metavar='C', help='Collect interval')
-parser.add_argument('--batch-size', type=int, default=50, metavar='B', help='Batch size')
+parser.add_argument('--batch-size', type=int, default=32, metavar='B', help='Batch size')
 parser.add_argument('--chunk-size', type=int, default=50, metavar='L', help='Chunk size')
 parser.add_argument('--worldmodel-MSEloss', action='store_true', help='use MSE loss for observation_model and reward_model training')
 parser.add_argument('--overshooting-distance', type=int, default=50, metavar='D', help='Latent overshooting distance/latent overshooting weight for t = 1')
@@ -91,7 +91,7 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if torch.cuda.is_available() and not args.disable_cuda:
   print("using CUDA")
-  args.device = torch.device('cuda')
+  args.device = torch.device('cuda:2,1')
   torch.cuda.manual_seed(args.seed)
 else:
   print("using CPU")
@@ -216,6 +216,7 @@ if args.test:
   env.close()
   quit()
 
+mse_loss = nn.MSELoss()
 
 # Training (and testing)
 for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total=args.episodes, initial=metrics['episodes'][-1] + 1):
@@ -304,14 +305,33 @@ for episode in tqdm(range(metrics['episodes'][-1] + 1, args.episodes + 1), total
         action_indices = sample_with_replacement[mdl,:].reshape(onestep_batch_size, 1, 1).expand(onestep_batch_size, onestep_batch_size, action_feature_size)
         pred_indices = sample_with_replacement[mdl,:].reshape(onestep_batch_size, 1, 1).expand(onestep_batch_size, onestep_batch_size, obs_feature_size)
         belief_indices = sample_with_replacement[mdl,:].reshape(onestep_batch_size, 1, 1).expand(onestep_batch_size, onestep_batch_size, belief_feature_size)
+        
+        action_indices = action_indices.reshape(-1, action_indices.shape[-1])
+        onestep_actions = onestep_actions.reshape(-1, onestep_actions.shape[-1])
+
+        belief_indices = belief_indices.reshape(-1, belief_indices.shape[-1])
+        onestep_beliefs = onestep_beliefs.reshape(-1, onestep_beliefs.shape[-1])
+
+        pred_indices = pred_indices.reshape(-1, pred_indices.shape[-1])
+        onestep_embed = onestep_embed.reshape(-1, onestep_embed.shape[-1])
+        
         input_action = torch.gather(onestep_actions, 0, action_indices)
         input_state = torch.gather(onestep_beliefs, 0, belief_indices)
         target_prediction = torch.gather(onestep_embed, 0, pred_indices)
+
+        input_action = input_action.reshape(args.batch_size, args.batch_size, input_action.shape[-1])
+        input_state = input_state.reshape(args.batch_size, args.batch_size, input_state.shape[-1])
+        target_prediction = target_prediction.reshape(args.batch_size, args.batch_size, target_prediction.shape[-1])
+
         prediction = onestep_models[mdl](input_state, input_action)
         prediction = prediction.mean
+        #print (prediction.shape, target_prediction.shape)
         loss = ((prediction - target_prediction.detach()) ** 2).mean(axis=[0,1])
+        #print (loss.shape)
         loss *= args.ensemble_loss_scale
+        #print (loss)
         onestep_loss = loss.mean()
+        #print (onestep_loss)
         onestep_optimizer.zero_grad()
         onestep_loss.backward()
         nn.utils.clip_grad_norm_(onestep_param_list, args.grad_clip_norm, norm_type=2)
