@@ -99,7 +99,7 @@ class OneStepModel(jit.ScriptModule):
     hidden = self.act_fn(self.fc2(hidden))
     hidden = torch.cat([hidden, prev_action], dim=-1) 
     mean = self.fc3(hidden)
-    dist = Normal(mean, torch.zeros_like(mean).to('cuda'))
+    dist = Normal(mean, torch.zeros_like(mean).to('cuda')+1e-10)  # new versions of pytorch have conditions that scale greater than zero
     dist = torch.distributions.Independent(dist, 1)
     return dist
 
@@ -287,6 +287,9 @@ class TanhBijector(torch.distributions.Transform):
     def __init__(self):
         super().__init__()
         self.bijective = True
+        self.domain = torch.distributions.constraints.real
+        self.codomain = torch.distributions.constraints.interval(-1.0, 1.0)
+
 
     @property
     def sign(self):
